@@ -1,0 +1,15 @@
+# Copy to accounts.toml inside the /data volume and edit.
+# backup_dirs are paths INSIDE the container — mount your icloudpd download
+# tree read-only (see deploy/docker-compose.yaml).
+
+[[accounts]]
+name = "joseph"
+apple_id = "joseph@example.com"
+backup_dirs = ["/backup/icloud_joseph"]
+cookie_directory = "/data/cookies/joseph"
+
+[[accounts]]
+name = "christine"
+apple_id = "christine@example.com"
+backup_dirs = ["/backup/icloud_christine"]
+cookie_directory = "/data/cookies/christine"

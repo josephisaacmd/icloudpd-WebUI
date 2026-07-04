@@ -1,0 +1,5 @@
+# The PyPI wheel of icloudpd ships a standalone binary, not an importable
+# library, so install the library (icloudpd + pyicloud_ipd) from source.
+icloudpd @ git+https://github.com/icloud-photos-downloader/icloud_photos_downloader.git@v1.32.3
+fastapi>=0.111,<1
+uvicorn[standard]>=0.30,<1

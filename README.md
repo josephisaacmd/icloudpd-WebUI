@@ -1,3 +1,19 @@
+# This fork: iCloud backup + selective space-freeing for TrueNAS
+
+This fork adds two things on top of upstream docker-icloudpd:
+
+- **`space-manager/`** — a web dashboard to *selectively delete* photos/videos
+  (e.g. the largest old videos) from iCloud **after verifying** a
+  byte-identical copy exists in the local backup. Dry-run by default,
+  read-only mount of the backup tree, typed confirmation, audit log.
+- **`deploy/`** — a docker-compose stack pairing
+  [icloudpd-web](https://github.com/AirswitchAsa/icloudpd-web) (download
+  dashboard with scheduling and browser 2FA re-auth) with space-manager,
+  plus `RUNBOOK.md` for the full workflow (download → snapshot → Immich
+  external library → free iCloud space).
+
+Upstream README follows.
+
 # docker-icloudpd
 An Alpine Linux Docker container for iCloud Photos Downloader. I use it for syncing the photo streams of all the iDevices in my house back to my server because it's the only way of backing up multiple devices to a single location. It uses the system keyring to securely store credentials, has HEIC to JPG conversion capability, and can send Telegram, Prowl, Pushover, WebHook, DingTalk, Discord, openhab, IYUU, WeCom, msmtp & Signal notifications. Please note, Apple's Advanced Data Protection (ADP) is not supported. ADP must be disabled for this container to work.
 

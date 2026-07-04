@@ -1,0 +1,48 @@
+# iCloud → TrueNAS photo backup stack
+#
+# Two services:
+#   icloudpd-web   — download dashboard (multi-account "policies", cron
+#                    scheduling, live progress, browser 2FA re-auth)
+#                    https://github.com/AirswitchAsa/icloudpd-web
+#   space-manager  — this repo's selective delete-from-iCloud dashboard
+#                    (verify-backed-up → pick large videos → free iCloud space)
+#
+# Host paths match the existing TrueNAS layout:
+#   /mnt/Greg/Photo Backup/icloud_joseph
+#   /mnt/Greg/Photo Backup/icloud_christine
+#
+# Read deploy/RUNBOOK.md before enabling live deletion.
+
+services:
+  icloudpd-web:
+    image: spicadust/icloudpd-web:latest
+    container_name: icloudpd-web
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      HOST: 0.0.0.0
+      PORT: "5000"
+      # Generate with:
+      #   docker run --rm spicadust/icloudpd-web:latest icloudpd-web init-password 'yourpw'
+      PASSWORD_HASH: ${ICLOUDPD_WEB_PASSWORD_HASH:-}
+      SESSION_SECRET: ${ICLOUDPD_WEB_SESSION_SECRET:-}
+    volumes:
+      - /mnt/FastSSD/docker/icloudpd-web/data:/data
+      - "/mnt/Greg/Photo Backup:/downloads"
+
+  space-manager:
+    build: ../space-manager
+    container_name: icloud-space-manager
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    environment:
+      # Flip to "false" ONLY after a dry-run shows exactly what you expect.
+      SPACE_MANAGER_DRY_RUN: ${SPACE_MANAGER_DRY_RUN:-true}
+      SPACE_MANAGER_UI_PASSWORD: ${SPACE_MANAGER_UI_PASSWORD:-}
+    volumes:
+      - /mnt/FastSSD/docker/icloud-space-manager:/data
+      # Backup tree is mounted READ-ONLY: this container can never touch
+      # the local copies, only verify them.
+      - "/mnt/Greg/Photo Backup:/backup:ro"

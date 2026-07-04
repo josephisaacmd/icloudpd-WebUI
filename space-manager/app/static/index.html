@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>iCloud Space Manager</title>
+<style>
+  :root {
+    --bg: #10151c; --panel: #1a212b; --panel2: #202a37; --border: #2d3948;
+    --text: #dce5ef; --dim: #8fa0b3; --accent: #4da3ff; --ok: #3ecf8e;
+    --warn: #f5b83d; --danger: #ef5f6b;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--text); }
+  header { padding: 14px 20px; background: var(--panel); border-bottom: 1px solid var(--border);
+           display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  header h1 { font-size: 17px; margin: 0; font-weight: 600; }
+  .banner { padding: 6px 12px; border-radius: 6px; font-weight: 600; font-size: 12.5px; }
+  .banner.dry { background: #2a3a26; color: var(--ok); border: 1px solid #3c5a34; }
+  .banner.live { background: #43242a; color: var(--danger); border: 1px solid #6b3540; }
+  main { padding: 18px 20px; max-width: 1200px; margin: 0 auto; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+  .tab { padding: 8px 18px; border-radius: 8px 8px 0 0; background: var(--panel); cursor: pointer;
+         border: 1px solid var(--border); border-bottom: none; color: var(--dim); }
+  .tab.active { background: var(--panel2); color: var(--text); font-weight: 600; }
+  .card { background: var(--panel2); border: 1px solid var(--border); border-radius: 0 8px 8px 8px; padding: 16px; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  .pill { padding: 3px 10px; border-radius: 99px; font-size: 12px; font-weight: 600; }
+  .pill.ready { background: #1f3a2e; color: var(--ok); }
+  .pill.needs_password, .pill.needs_2fa, .pill.disconnected { background: #3a3320; color: var(--warn); }
+  input, select, button { font: inherit; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--panel); color: var(--text); padding: 7px 10px; }
+  input:focus, select:focus { outline: 1px solid var(--accent); }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #06121f; font-weight: 600; }
+  button.danger { background: var(--danger); border-color: var(--danger); color: #200a0d; font-weight: 700; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { color: var(--dim); font-weight: 600; font-size: 12.5px; position: sticky; top: 0; background: var(--panel2); }
+  td.filename { max-width: 340px; overflow: hidden; text-overflow: ellipsis; }
+  tr:hover td { background: #232f3e; }
+  .ok { color: var(--ok); } .bad { color: var(--danger); } .dim { color: var(--dim); }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  #footerbar { position: sticky; bottom: 0; background: var(--panel); border-top: 1px solid var(--border);
+    padding: 10px 20px; display: none; align-items: center; gap: 16px; }
+  #modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none;
+    align-items: center; justify-content: center; }
+  #modal .box { background: var(--panel2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 22px; width: 460px; max-width: 92vw; }
+  #modal h2 { margin: 0 0 8px; font-size: 16px; }
+  .muted { color: var(--dim); font-size: 12.5px; }
+  #results { max-height: 200px; overflow: auto; margin-top: 10px; font-size: 12.5px; }
+  .spin { display: inline-block; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<header>
+  <h1>iCloud Space Manager</h1>
+  <span id="mode" class="banner dry">…</span>
+  <span class="muted">Deleted items go to iCloud “Recently Deleted” (recoverable ~30 days). Deletion syncs to all devices on the account.</span>
+</header>
+<main>
+  <div class="tabs" id="tabs"></div>
+  <div class="card">
+    <div class="row" id="authrow"></div>
+    <div class="row" id="scanrow"></div>
+    <div class="row" id="filterrow" style="display:none">
+      <label>Type
+        <select id="f_type"><option value="movie">Videos</option><option value="">All</option><option value="image">Images</option></select>
+      </label>
+      <label>Min size <input id="f_min" type="number" value="100" min="0" style="width:80px"> MB</label>
+      <label>Older than <input id="f_age" type="number" value="0" min="0" style="width:70px"> days</label>
+      <label>Name <input id="f_q" placeholder="filter…" style="width:130px"></label>
+      <label>Sort
+        <select id="f_sort"><option value="size">Largest first</option><option value="date">Oldest first</option><option value="date_desc">Newest first</option></select>
+      </label>
+      <button class="primary" onclick="loadAssets()">Apply</button>
+      <button onclick="loadAssets(true)" title="Rescan the backup folder tree">Re-verify backups</button>
+      <span id="indexinfo" class="muted"></span>
+    </div>
+    <div id="tablewrap" style="max-height: 60vh; overflow:auto"></div>
+  </div>
+</main>
+<div id="footerbar">
+  <label><input type="checkbox" id="selall" onchange="toggleAll(this.checked)"> Select all shown (verified only)</label>
+  <span id="seltotal"></span>
+  <button class="danger" onclick="openModal()">Delete selected from iCloud…</button>
+</div>
+<div id="modal">
+  <div class="box">
+    <h2>Delete from iCloud</h2>
+    <p id="modalsummary"></p>
+    <p class="muted">Every selected file has a verified byte-identical copy in the local backup.
+       This removes them from iCloud (and from all devices syncing this account).
+       They can be recovered from Recently Deleted for ~30 days.</p>
+    <p>Type <b id="phrase"></b> to confirm:</p>
+    <input id="confirm" style="width:100%" autocomplete="off">
+    <div class="row" style="margin-top:12px; justify-content:flex-end">
+      <button onclick="closeModal()">Cancel</button>
+      <button class="danger" id="dodelete" onclick="doDelete()">Delete</button>
+    </div>
+    <div id="results"></div>
+  </div>
+</div>
+<script>
+let STATE = null, CURRENT = null, ROWS = [], SELECTED = new Set(), POLL = null;
+
+const $ = (id) => document.getElementById(id);
+const fmtBytes = (n) => {
+  if (n >= 1e9) return (n / 1e9).toFixed(2) + " GB";
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + " MB";
+  return Math.round(n / 1e3) + " KB";
+};
+const api = async (path, opts) => {
+  const res = await fetch(path, opts ? { headers: { "Content-Type": "application/json" }, ...opts } : undefined);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || res.statusText);
+  return data;
+};
+
+async function refreshState() {
+  STATE = await api("/api/state");
+  if (!CURRENT) CURRENT = STATE.accounts[0].name;
+  $("mode").className = "banner " + (STATE.dry_run ? "dry" : "live");
+  $("mode").textContent = STATE.dry_run ? "DRY-RUN MODE — deletes are simulated" : "LIVE MODE — deletes are real";
+  renderTabs(); renderAccount();
+}
+
+function renderTabs() {
+  $("tabs").innerHTML = STATE.accounts.map(a =>
+    `<div class="tab ${a.name === CURRENT ? "active" : ""}" onclick="switchTab('${a.name}')">
+       ${a.name} <span class="pill ${a.status}">${a.status.replace("_", " ")}</span></div>`).join("");
+}
+
+function switchTab(name) { CURRENT = name; SELECTED.clear(); ROWS = []; $("tablewrap").innerHTML = ""; renderTabs(); renderAccount(); }
+
+function acct() { return STATE.accounts.find(a => a.name === CURRENT); }
+
+function renderAccount() {
+  const a = acct();
+  let html = `<span class="muted">${a.apple_id} · backup: ${a.backup_dirs.join(", ")}</span>`;
+  if (a.status !== "ready") {
+    html += `<input id="pw" type="password" placeholder="app password not needed if cookie valid">
+             <button class="primary" onclick="connect()">Connect</button>`;
+    if (a.status === "needs_2fa")
+      html += `<input id="code" placeholder="2FA code" style="width:110px">
+               <button class="primary" onclick="send2fa()">Submit code</button>`;
+    if (a.last_error) html += `<span class="bad">${a.last_error}</span>`;
+  } else {
+    html += `<span class="ok">authenticated</span>`;
+  }
+  $("authrow").innerHTML = html;
+
+  const scan = a.scan, info = scan.info;
+  let s = "";
+  if (a.status === "ready") {
+    s += `<select id="album">` + STATE.albums.map(x => `<option>${x}</option>`).join("") + `</select>
+          <button class="primary" onclick="startScan()" ${scan.running ? "disabled" : ""}>
+            ${scan.running ? '<span class="spin">◌</span> scanning… ' + scan.count : "Scan iCloud library"}</button>`;
+  }
+  if (info) {
+    s += `<span class="muted">last scan: ${info.album} · ${info.count} assets ·
+          ${info.finished_at ? "finished " + info.finished_at.slice(0, 16).replace("T", " ") + " UTC" : "incomplete"}</span>`;
+  }
+  if (scan.error) s += `<span class="bad">scan error: ${scan.error}</span>`;
+  $("scanrow").innerHTML = s;
+  $("filterrow").style.display = info && info.count ? "flex" : "none";
+  if (scan.running && !POLL) POLL = setInterval(refreshState, 2500);
+  if (!scan.running && POLL) { clearInterval(POLL); POLL = null; if (info && info.finished_at) loadAssets(); }
+}
+
+async function connect() {
+  const pw = $("pw") ? $("pw").value : "";
+  await api(`/api/accounts/${CURRENT}/connect`, { method: "POST", body: JSON.stringify({ password: pw || null }) });
+  await refreshState();
+}
+async function send2fa() {
+  await api(`/api/accounts/${CURRENT}/2fa`, { method: "POST", body: JSON.stringify({ code: $("code").value }) });
+  await refreshState();
+}
+async function startScan() {
+  await api(`/api/accounts/${CURRENT}/scan`, { method: "POST", body: JSON.stringify({ album: $("album").value }) });
+  await refreshState();
+}
+
+async function loadAssets(refreshIndex = false) {
+  const p = new URLSearchParams();
+  if ($("f_type").value) p.set("item_type", $("f_type").value);
+  if (+$("f_min").value) p.set("min_mb", $("f_min").value);
+  if (+$("f_age").value) p.set("older_than_days", $("f_age").value);
+  if ($("f_q").value) p.set("q", $("f_q").value);
+  p.set("sort", $("f_sort").value);
+  if (refreshIndex) p.set("refresh_index", "true");
+  const data = await api(`/api/accounts/${CURRENT}/assets?` + p);
+  ROWS = data.rows; SELECTED.clear();
+  $("indexinfo").textContent = `${data.index.file_count} files indexed in backup` +
+    (data.index.errors.length ? " — ⚠ " + data.index.errors.join("; ") : "");
+  renderTable();
+}
+
+function renderTable() {
+  if (!ROWS.length) { $("tablewrap").innerHTML = '<p class="muted">No assets match the filters.</p>'; updateFooter(); return; }
+  const rows = ROWS.map((r, i) => `
+    <tr>
+      <td><input type="checkbox" ${r.verified ? "" : "disabled"} ${SELECTED.has(r.master_id) ? "checked" : ""}
+           onchange="toggleOne('${r.master_id}', this.checked)"></td>
+      <td class="filename" title="${r.filename}">${r.filename}</td>
+      <td>${r.asset_date.slice(0, 10)}</td>
+      <td>${r.item_type}</td>
+      <td class="num">${fmtBytes(r.size)}</td>
+      <td>${r.verified ? `<span class="ok" title="${r.local_path}">✓ backed up</span>`
+                       : '<span class="bad" title="No byte-identical copy found in the backup tree">✗ not in backup</span>'}</td>
+    </tr>`).join("");
+  $("tablewrap").innerHTML = `<table>
+    <thead><tr><th></th><th>File</th><th>Taken</th><th>Type</th><th class="num">Size</th><th>Backup</th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+  updateFooter();
+}
+
+function toggleOne(id, on) { on ? SELECTED.add(id) : SELECTED.delete(id); updateFooter(); }
+function toggleAll(on) {
+  SELECTED.clear();
+  if (on) ROWS.filter(r => r.verified).forEach(r => SELECTED.add(r.master_id));
+  renderTable();
+}
+function updateFooter() {
+  const sel = ROWS.filter(r => SELECTED.has(r.master_id));
+  $("footerbar").style.display = ROWS.length ? "flex" : "none";
+  $("seltotal").textContent = sel.length
+    ? `${sel.length} selected · ${fmtBytes(sel.reduce((s, r) => s + r.size, 0))} to free`
+    : "nothing selected";
+  document.querySelector("#footerbar .danger").disabled = !sel.length;
+}
+
+function openModal() {
+  const sel = ROWS.filter(r => SELECTED.has(r.master_id));
+  if (!sel.length) return;
+  $("phrase").textContent = STATE.confirm_phrase;
+  $("modalsummary").innerHTML = `<b>${sel.length}</b> files · <b>${fmtBytes(sel.reduce((s, r) => s + r.size, 0))}</b>` +
+    (STATE.dry_run ? ' <span class="ok">(dry-run: simulated)</span>' : ' <span class="bad">(LIVE)</span>');
+  $("confirm").value = ""; $("results").innerHTML = ""; $("dodelete").disabled = false;
+  $("modal").style.display = "flex";
+}
+function closeModal() { $("modal").style.display = "none"; }
+
+async function doDelete() {
+  $("dodelete").disabled = true;
+  try {
+    const data = await api(`/api/accounts/${CURRENT}/delete`, {
+      method: "POST",
+      body: JSON.stringify({ master_ids: [...SELECTED], confirm: $("confirm").value }),
+    });
+    const okCount = data.results.filter(r => r.ok).length;
+    $("results").innerHTML =
+      `<p>${data.dry_run ? "Dry-run" : "Done"}: ${okCount}/${data.results.length} ok` +
+      (data.dry_run ? "" : ` · freed ${fmtBytes(data.freed_bytes)} (after Recently Deleted purge)`) + `</p>` +
+      `<p class="muted">${data.note}</p>` +
+      data.results.filter(r => !r.ok).map(r => `<div class="bad">${r.filename}: ${r.detail}</div>`).join("");
+    if (!data.dry_run) { SELECTED.clear(); await loadAssets(); }
+  } catch (e) {
+    $("results").innerHTML = `<div class="bad">${e.message}</div>`;
+    $("dodelete").disabled = false;
+  }
+}
+
+window.addEventListener("error", e => console.error(e));
+refreshState().catch(e => { document.body.innerHTML = "<pre style='color:#ef5f6b;padding:2em'>" + e.message + "</pre>"; });
+</script>
+</body>
+</html>
