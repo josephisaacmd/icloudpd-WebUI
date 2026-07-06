@@ -11,6 +11,12 @@ on disk (default name-size-dedup-with-suffix policy):
 and in every case the on-disk byte size must equal the iCloud original size.
 Filename comparison is case-insensitive because the tree may live on
 case-insensitive shares (SMB).
+
+Live Photos are one iCloud asset with two files. Deleting the asset removes
+both from iCloud, so verification requires BOTH on disk: the still, and the
+motion clip under icloudpd's naming (IMG_1234_HEVC.MOV with the default
+"suffix" policy for HEIC stills, IMG_1234.MOV with the "original" policy or
+for non-HEIC stills) — matched against the motion clip's own byte size.
 """
 
 from __future__ import annotations
@@ -64,3 +70,42 @@ def find_local_copy(index: LocalIndex, filename: str, size: int) -> str | None:
             if local_size == size:
                 return path
     return None
+
+
+def _motion_filenames(still_filename: str) -> list[str]:
+    """Possible on-disk names of a Live Photo's motion clip, per icloudpd's
+    two --live-photo-mov-filename-policy values."""
+    stem, ext = os.path.splitext(still_filename)
+    names = [f"{stem}.MOV"]  # "original" policy, and non-HEIC stills
+    if ext.lower() == ".heic":
+        names.insert(0, f"{stem}_HEVC.MOV")  # "suffix" policy (default)
+    return names
+
+
+def find_local_motion_copy(
+    index: LocalIndex, still_filename: str, lp_size: int
+) -> str | None:
+    """Return the path of a verified local Live Photo motion clip, or None."""
+    for motion_name in _motion_filenames(still_filename):
+        path = find_local_copy(index, motion_name, lp_size)
+        if path:
+            return path
+    return None
+
+
+def verify_asset(
+    index: LocalIndex, filename: str, size: int, lp_size: int | None
+) -> tuple[bool, str | None, str]:
+    """Full verification for one asset.
+
+    Returns (verified, still_path, detail). For Live Photos (lp_size set)
+    both the still and the motion clip must be present and byte-identical.
+    """
+    still_path = find_local_copy(index, filename, size)
+    if still_path is None:
+        return False, None, "no local copy"
+    if lp_size:
+        motion_path = find_local_motion_copy(index, filename, lp_size)
+        if motion_path is None:
+            return False, still_path, "live photo motion clip (.MOV) not in backup"
+    return True, still_path, "ok"

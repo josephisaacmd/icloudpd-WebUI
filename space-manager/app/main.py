@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from .config import Settings, load_settings
 from .icloud import SCANNABLE_ALBUMS, AccountBusyError, AccountSession, NotReadyError
 from .store import Store
-from .verify import LocalIndex, build_index, find_local_copy
+from .verify import LocalIndex, build_index, verify_asset
 
 logging.basicConfig(level=os.environ.get("SPACE_MANAGER_LOG_LEVEL", "INFO"))
 logger = logging.getLogger(__name__)
@@ -204,9 +204,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             offset=offset,
         )
         for row in rows:
-            local = find_local_copy(index, row["filename"], row["size"])
-            row["verified"] = local is not None
+            verified, local, detail = verify_asset(
+                index, row["filename"], row["size"], row.get("lp_size")
+            )
+            row["verified"] = verified
             row["local_path"] = local
+            row["verify_detail"] = detail
+            row["total_size"] = row["size"] + (row.get("lp_size") or 0)
         return {
             "rows": rows,
             "index": {
@@ -241,11 +245,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         index_cache[name] = index
         if index.errors:
             raise HTTPException(409, f"backup dirs unavailable: {index.errors}")
-        unverified = [
-            r["filename"]
-            for r in rows
-            if find_local_copy(index, r["filename"], r["size"]) is None
-        ]
+        unverified = []
+        for r in rows:
+            ok, _local, detail = verify_asset(
+                index, r["filename"], r["size"], r.get("lp_size")
+            )
+            if not ok:
+                unverified.append(f"{r['filename']} ({detail})")
         if unverified:
             raise HTTPException(
                 409,
@@ -258,7 +264,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except (NotReadyError, AccountBusyError) as exc:
             raise HTTPException(409, str(exc))
 
-        sizes = {r["master_id"]: r["size"] for r in rows}
+        # freed space counts both parts of a Live Photo
+        sizes = {r["master_id"]: r["size"] + (r.get("lp_size") or 0) for r in rows}
         freed = 0
         deleted_ids = []
         for result in results:

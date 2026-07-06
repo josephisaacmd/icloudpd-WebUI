@@ -71,12 +71,26 @@ def asset_to_row(photo: PhotoAsset) -> dict[str, Any] | None:
     except Exception:  # filenameEnc can be malformed; fall back to record id
         filename = f"{photo.id}.{photo.item_type_extension}"
     item_type = photo.item_type
+
+    # Live Photo: an image asset carrying a motion-clip resource. Deleting
+    # the asset deletes both parts, so the clip's size is recorded and the
+    # verification gate requires the clip on disk too.
+    lp_size = None
+    if item_type != AssetItemType.MOVIE:
+        lp_res = photo._master_record["fields"].get("resOriginalVidComplRes")
+        if lp_res:
+            try:
+                lp_size = int(lp_res["value"]["size"])
+            except (KeyError, TypeError, ValueError):
+                lp_size = None
+
     return {
         "master_id": photo.id,
         "asset_record_name": photo._asset_record["recordName"],
         "asset_change_tag": photo._asset_record["recordChangeTag"],
         "filename": filename,
         "size": size,
+        "lp_size": lp_size,
         "asset_date": photo.asset_date.isoformat(),
         "item_type": (
             "movie"

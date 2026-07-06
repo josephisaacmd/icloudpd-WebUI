@@ -108,6 +108,7 @@
 let STATE = null, CURRENT = null, ROWS = [], SELECTED = new Set(), POLL = null;
 
 const $ = (id) => document.getElementById(id);
+const totalSize = (r) => r.size + (r.lp_size || 0);
 const fmtBytes = (n) => {
   if (n >= 1e9) return (n / 1e9).toFixed(2) + " GB";
   if (n >= 1e6) return (n / 1e6).toFixed(1) + " MB";
@@ -208,10 +209,10 @@ function renderTable() {
            onchange="toggleOne('${r.master_id}', this.checked)"></td>
       <td class="filename" title="${r.filename}">${r.filename}</td>
       <td>${r.asset_date.slice(0, 10)}</td>
-      <td>${r.item_type}</td>
-      <td class="num">${fmtBytes(r.size)}</td>
-      <td>${r.verified ? `<span class="ok" title="${r.local_path}">✓ backed up</span>`
-                       : '<span class="bad" title="No byte-identical copy found in the backup tree">✗ not in backup</span>'}</td>
+      <td>${r.lp_size ? "live photo" : r.item_type}</td>
+      <td class="num" ${r.lp_size ? `title="still ${fmtBytes(r.size)} + motion ${fmtBytes(r.lp_size)}"` : ""}>${fmtBytes(totalSize(r))}</td>
+      <td>${r.verified ? `<span class="ok" title="${r.local_path}${r.lp_size ? " (+ motion clip)" : ""}">✓ backed up</span>`
+                       : `<span class="bad" title="${r.verify_detail || "No byte-identical copy found in the backup tree"}">✗ ${r.verify_detail === "live photo motion clip (.MOV) not in backup" ? "motion clip missing" : "not in backup"}</span>`}</td>
     </tr>`).join("");
   $("tablewrap").innerHTML = `<table>
     <thead><tr><th></th><th>File</th><th>Taken</th><th>Type</th><th class="num">Size</th><th>Backup</th></tr></thead>
@@ -229,7 +230,7 @@ function updateFooter() {
   const sel = ROWS.filter(r => SELECTED.has(r.master_id));
   $("footerbar").style.display = ROWS.length ? "flex" : "none";
   $("seltotal").textContent = sel.length
-    ? `${sel.length} selected · ${fmtBytes(sel.reduce((s, r) => s + r.size, 0))} to free`
+    ? `${sel.length} selected · ${fmtBytes(sel.reduce((s, r) => s + totalSize(r), 0))} to free`
     : "nothing selected";
   document.querySelector("#footerbar .danger").disabled = !sel.length;
 }
@@ -238,7 +239,7 @@ function openModal() {
   const sel = ROWS.filter(r => SELECTED.has(r.master_id));
   if (!sel.length) return;
   $("phrase").textContent = STATE.confirm_phrase;
-  $("modalsummary").innerHTML = `<b>${sel.length}</b> files · <b>${fmtBytes(sel.reduce((s, r) => s + r.size, 0))}</b>` +
+  $("modalsummary").innerHTML = `<b>${sel.length}</b> files · <b>${fmtBytes(sel.reduce((s, r) => s + totalSize(r), 0))}</b>` +
     (STATE.dry_run ? ' <span class="ok">(dry-run: simulated)</span>' : ' <span class="bad">(LIVE)</span>');
   $("confirm").value = ""; $("results").innerHTML = ""; $("dodelete").disabled = false;
   $("modal").style.display = "flex";

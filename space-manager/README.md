@@ -22,6 +22,10 @@ this repo's container).
   a byte-identical copy (same name — including icloudpd's dedup-suffix
   variants — and same size) exists in the local backup tree. Verification is
   re-run against a fresh directory index at the moment of deletion.
+- **Live Photos handled as one unit**: deleting a Live Photo from iCloud
+  removes both the still and the motion clip, so the gate requires *both*
+  files on disk (`IMG_1234.HEIC` + `IMG_1234_HEVC.MOV`/`IMG_1234.MOV`, each
+  byte-identical) and the size shown/freed counts both parts.
 - Deletion uses the exact CloudKit call icloudpd uses (`isDeleted = 1` on the
   `CPLAsset` record): assets move to **Recently Deleted**, recoverable for
   ~30 days, and still count against quota until purged there.

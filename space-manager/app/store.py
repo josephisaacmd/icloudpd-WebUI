@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS assets (
     asset_change_tag   TEXT NOT NULL,
     filename           TEXT NOT NULL,
     size               INTEGER NOT NULL,
+    lp_size            INTEGER,
     asset_date         TEXT NOT NULL,
     item_type          TEXT NOT NULL,
     album              TEXT NOT NULL,
@@ -81,8 +82,8 @@ class Store:
         with self._conn() as conn:
             conn.executemany(
                 "INSERT OR REPLACE INTO assets (account, master_id, asset_record_name, "
-                "asset_change_tag, filename, size, asset_date, item_type, album, scanned_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "asset_change_tag, filename, size, lp_size, asset_date, item_type, album, scanned_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     (
                         account,
@@ -91,6 +92,7 @@ class Store:
                         r["asset_change_tag"],
                         r["filename"],
                         r["size"],
+                        r.get("lp_size"),
                         r["asset_date"],
                         r["item_type"],
                         album,

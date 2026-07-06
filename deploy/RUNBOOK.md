@@ -83,6 +83,10 @@ that recent photos appear twice until you pick one ingestion path.)
   downloader may not have finished, converted HEIC without keeping the
   original, or renamed with a different policy; the gate matches
   `NAME.EXT`, `NAME-<bytes>.EXT`, `NAME-original.EXT` with exact byte size.
+- **"motion clip missing" on Live Photos** → the downloader skipped
+  live-photo videos (`skip_live_photos`) or downloaded them at reduced size
+  (`live_photo_size` ≠ original). Fix the download policy, resync, re-verify.
+  This is deliberate: deleting a Live Photo removes its motion clip too.
 - **Delete returns a conflict error** → the library changed since the scan;
   rescan and retry (the app already refreshes each record's change tag at
   delete time, so this should be rare).
